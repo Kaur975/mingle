@@ -1,27 +1,39 @@
 const mongoose = require('mongoose')
 
-const userSchema = mongoose.Schema({
-    username:{
-        type:String,
-        require:true,
-        min:3,
-        max:256
+const userSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: 2,
+      maxlength: 60,
     },
-    email:{
-        type:String,
-        require:true,
-        min:6,
-        max:256
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+      maxlength: 254,
+      // Basic email regex (fine for coursework) CHECK will implement in joi later
+      match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
+      index: true,
     },
-    password:{
-        type:String,
-        require:true,
-        min:6,
-        max:1024
+    passwordHash: {
+      type: String,
+      required: true,
+      minlength: 20,
     },
-    date:{
-        type:Date,
-        default:Date.now
-    }
-})
+    // Optional role if you want extensions later CHECK
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
+  },
+  { timestamps: true }
+);
+
+
 module.exports=mongoose.model('users',userSchema)
