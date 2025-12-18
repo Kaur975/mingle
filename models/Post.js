@@ -29,6 +29,7 @@ const PostSchema = new mongoose.Schema(
     topics: {
       type: [String],
       required: true,
+      // Check that posts belong to at least one topic, and they are of the valid types
       validate: [
         {
           validator: (arr) => Array.isArray(arr) && arr.length > 0,
@@ -72,13 +73,13 @@ const PostSchema = new mongoose.Schema(
     likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     dislikedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
-    // Comments list
+    // Comments list, which is made of JSON objects according the CommentSchema object
     comments: { type: [CommentSchema], default: [] },
   },
   { timestamps: true }
 );
 
-// Keep status consistent with expiresAt
+// Check that the expired status on the post is updated correctly
 PostSchema.pre("save", async function () {
   const now = Date.now();
   const exp = new Date(this.expiresAt).getTime();

@@ -23,6 +23,7 @@ router.post("/register", async (req, res, next) => {
     const email = String(req.body.email || "").trim().toLowerCase();
     const password = String(req.body.password || "");
 
+    // Validation 1 - check user inputs
     if (name.length < 2) {
       return res.status(400).json({ error: "Name must be at least 2 characters" });
     }
@@ -33,14 +34,17 @@ router.post("/register", async (req, res, next) => {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
 
+    // Validation 2 - check if the user already exists
     const existing = await User.findOne({ email }).lean();
     if (existing) {
       return res.status(409).json({ error: "Email already registered" });
     }
 
+    // If we get this far, all validations passed so generate a password hash for the password
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await User.create({ name, email, passwordHash });
 
+    // Generate token for user
     const token = signToken(user);
 
     return res.status(201).json({
