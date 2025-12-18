@@ -11,7 +11,6 @@ function signToken(user) {
       userId: user._id.toString(),
       name: user.name,
       email: user.email,
-      role: user.role,
     },
     process.env.JWT_SECRET,
     { expiresIn: "2h" }
@@ -58,20 +57,24 @@ router.post("/login", async (req, res, next) => {
     const email = String(req.body.email || "").trim().toLowerCase();
     const password = String(req.body.password || "");
 
+    // Validation 1 - check user input
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    // Validation 2 - check if the user exists
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Validation 3 - check if password is correct
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Generate auth token
     const token = signToken(user);
 
     return res.status(200).json({

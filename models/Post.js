@@ -79,16 +79,14 @@ const PostSchema = new mongoose.Schema(
 );
 
 // Keep status consistent with expiresAt
-PostSchema.pre("save", function (next) {
+PostSchema.pre("save", async function () {
   const now = Date.now();
   const exp = new Date(this.expiresAt).getTime();
   this.status = now < exp ? "Live" : "Expired";
-  next();
 });
 
 // Helpful indexes for queries in Actions 3/5/6
 PostSchema.index({ topics: 1, status: 1, createdAt: -1 });
 PostSchema.index({ topics: 1, likesCount: -1, dislikesCount: -1 });
-PostSchema.index({ expiresAt: 1 });
 
-module.exports = mongoose.model("Post", PostSchema);
+module.exports = mongoose.model("posts", PostSchema);
