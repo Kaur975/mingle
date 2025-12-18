@@ -7,9 +7,9 @@ require('dotenv/config')
 
 app.use(bodyParser.json())
 
-app.use("/api/auth", require("./routes/auth.routes"));
-app.use("/api/posts", require("./routes/post.routes"));
-app.use("/api/topics", require("./routes/topic.routes"));
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/posts", require("./routes/post"));
+app.use("/api/topics", require("./routes/topic"));
 
 
 mongoose.connect(process.env.DB_CONNECTOR).then(()=>{
