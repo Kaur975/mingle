@@ -157,28 +157,35 @@ router.get("/:id", authRequired, async (req, res, next) => {
  */
 router.post("/:id/like", authRequired, async (req, res, next) => {
   try {
+    // Verify that a valid post id has been given
     const id = String(req.params.id);
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({ error: "Invalid post id" });
     }
 
+    // Verify the post they are liking exists
     const post = await Post.findById(id);
     if (!post) {
       return res.status(404).json({ error: "Post not found" });
     }
 
+    // Check if user is liking their own post
+    if (post.owner.userId.toString() === req.user.userId) {
+      return res.status(403).json({ error: "Post owners cannot like their own posts" });
+    }
+
+    // Check if the post the user is liking is expired
     const statusNow = await refreshPostStatusIfNeeded(post);
     if (statusNow !== "Live") {
       return res.status(403).json({ error: "Post expired; no further interactions allowed" });
     }
 
+    // Check if the user has already like this post
     const userId = new mongoose.Types.ObjectId(req.user.userId);
-
     const alreadyLiked = post.likedBy.some((x) => x.equals(userId));
     if (alreadyLiked) {
       return res.status(409).json({ error: "You already liked this post" });
     }
-
     // If disliked before, remove dislike (toggle)
     const wasDisliked = post.dislikedBy.some((x) => x.equals(userId));
     if (wasDisliked) {
@@ -186,9 +193,11 @@ router.post("/:id/like", authRequired, async (req, res, next) => {
       post.dislikesCount = Math.max(0, post.dislikesCount - 1);
     }
 
+    // Increment the likes count on the post
     post.likedBy.push(userId);
     post.likesCount += 1;
 
+    // Attempt to send the API request for adding a like
     await post.save();
 
     return res.status(200).json({
@@ -201,29 +210,38 @@ router.post("/:id/like", authRequired, async (req, res, next) => {
   }
 });
 
+
 /**
  * Dislike a post (Action 4)
  * POST /api/posts/:id/dislike
  */
 router.post("/:id/dislike", authRequired, async (req, res, next) => {
   try {
+    // Verify that a valid post id has been given
     const id = String(req.params.id);
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({ error: "Invalid post id" });
     }
 
+    // Verify the post they are disliking exists
     const post = await Post.findById(id);
     if (!post) {
       return res.status(404).json({ error: "Post not found" });
     }
 
+    // Check if user is disliking their own post
+    if (post.owner.userId.toString() === req.user.userId) {
+      return res.status(403).json({ error: "Post owners cannot dislike their own posts" });
+    }
+
+    // Check if the post the user is liking is expired
     const statusNow = await refreshPostStatusIfNeeded(post);
     if (statusNow !== "Live") {
       return res.status(403).json({ error: "Post expired; no further interactions allowed" });
     }
 
+    // Check if the user has already disliked this post
     const userId = new mongoose.Types.ObjectId(req.user.userId);
-
     const alreadyDisliked = post.dislikedBy.some((x) => x.equals(userId));
     if (alreadyDisliked) {
       return res.status(409).json({ error: "You already disliked this post" });
@@ -236,11 +254,12 @@ router.post("/:id/dislike", authRequired, async (req, res, next) => {
       post.likesCount = Math.max(0, post.likesCount - 1);
     }
 
+    // Increment the dislikes count on the post
     post.dislikedBy.push(userId);
     post.dislikesCount += 1;
 
+    // Attempt to send the API request for adding a dislike
     await post.save();
-
     return res.status(200).json({
       message: "Disliked",
       likesCount: post.likesCount,
