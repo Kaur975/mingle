@@ -6,7 +6,7 @@ Install:
   pip install requests
 
 Run:
-  python tests.py http://<VM_IP>:3000
+  python tests.py http://<VM_IP>:<VM_PORT>
 """
 
 import sys
@@ -27,26 +27,49 @@ def auth_headers(token):
 
 
 def print_step(title):
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
     print(title)
-    print("=" * 60)
+    print("=" * 70)
+
+
+def show_expected_actual(label, expected, actual):
+    print(f"{label}")
+    print(f"  Expected: {expected}")
+    print(f"  Actual:   {actual}")
+
+
+def try_json(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return None
 
 
 def register(base, name, email, password):
     url = f"{base}/api/auth/register"
     r = post_json(url, {"name": name, "email": email, "password": password})
-    print(f"Register {name}: {r.status_code}")
-    # 201 (created) or 409 (already exists) is fine for reruns
+    show_expected_actual(
+        f"Register {name}",
+        "201 Created (or 409 if already registered)",
+        f"{r.status_code}",
+    )
     return r
 
 
 def login(base, email, password):
     url = f"{base}/api/auth/login"
     r = post_json(url, {"email": email, "password": password})
-    print(f"Login {email}: {r.status_code}")
+    show_expected_actual(
+        f"Login {email}",
+        "200 OK + token",
+        f"{r.status_code}",
+    )
+    tok = None
     if r.status_code == 200:
-        return r.json().get("token")
-    return None
+        data = try_json(r)
+        if data:
+            tok = data.get("token")
+    return tok
 
 
 def create_post(base, token, title, topics, body, expires_in_minutes):
@@ -61,57 +84,96 @@ def create_post(base, token, title, topics, body, expires_in_minutes):
         },
         headers=auth_headers(token),
     )
-    print(f"Create post '{title}': {r.status_code}")
+    show_expected_actual(
+        f"Create post '{title}'",
+        "201 Created + post JSON",
+        f"{r.status_code}",
+    )
+    post_id = None
     if r.status_code == 201:
-        return r.json().get("_id")
-    return None
+        data = try_json(r)
+        if data:
+            post_id = data.get("_id")
+    if post_id:
+        print("  Post ID:", post_id)
+    return post_id
 
 
 def browse_topic(base, token, topic):
     url = f"{base}/api/posts"
     r = get(url, headers=auth_headers(token), params={"topic": topic})
-    print(f"Browse topic={topic}: {r.status_code}")
+    show_expected_actual(
+        f"Browse topic={topic}",
+        "200 OK + list of posts",
+        f"{r.status_code}",
+    )
     if r.status_code == 200:
-        return r.json()
+        data = try_json(r)
+        if isinstance(data, list):
+            print("  Returned posts:", len(data))
+            return data
     return []
 
 
-def like(base, token, post_id):
+def like(base, token, post_id, who=""):
     url = f"{base}/api/posts/{post_id}/like"
     r = requests.post(url, headers=auth_headers(token))
-    print(f"Like {post_id}: {r.status_code}")
+    label = f"Like post ({who})" if who else "Like post"
+    show_expected_actual(
+        label,
+        "200 OK (or error if invalid action)",
+        f"{r.status_code}",
+    )
     return r
 
 
-def dislike(base, token, post_id):
+def dislike(base, token, post_id, who=""):
     url = f"{base}/api/posts/{post_id}/dislike"
     r = requests.post(url, headers=auth_headers(token))
-    print(f"Dislike {post_id}: {r.status_code}")
+    label = f"Dislike post ({who})" if who else "Dislike post"
+    show_expected_actual(
+        label,
+        "200 OK (or error if invalid action)",
+        f"{r.status_code}",
+    )
     return r
 
 
-def comment(base, token, post_id, text):
+def comment(base, token, post_id, text, who=""):
     url = f"{base}/api/posts/{post_id}/comments"
     r = post_json(url, {"text": text}, headers=auth_headers(token))
-    print(f"Comment {post_id}: {r.status_code}")
+    label = f"Comment ({who})" if who else "Comment"
+    show_expected_actual(
+        label,
+        "201 Created (or 200 OK) + comment info",
+        f"{r.status_code}",
+    )
     return r
 
 
 def most_active(base, token, topic):
     url = f"{base}/api/topics/{topic}/most-active"
     r = get(url, headers=auth_headers(token))
-    print(f"Most active {topic}: {r.status_code}")
+    show_expected_actual(
+        f"Most active topic={topic}",
+        "200 OK + one post",
+        f"{r.status_code}",
+    )
     if r.status_code == 200:
-        return r.json()
+        return try_json(r)
     return None
 
 
 def expired_by_topic(base, token, topic):
     url = f"{base}/api/topics/{topic}/expired"
     r = get(url, headers=auth_headers(token))
-    print(f"Expired posts {topic}: {r.status_code}")
+    show_expected_actual(
+        f"Expired posts topic={topic}",
+        "200 OK + [] if none",
+        f"{r.status_code}",
+    )
     if r.status_code == 200:
-        return r.json()
+        return try_json(r)
     return None
 
 
@@ -130,7 +192,7 @@ def main():
     base = sys.argv[1].rstrip("/")
     password = "StrongPass123"
 
-    # TC1 / TC2: Register + Login
+    # TC1 / TC2
     print_step("TC1/TC2: Register + Login (get tokens)")
     users = [
         ("Olga", "olga@mingle.com"),
@@ -148,73 +210,93 @@ def main():
         tokens[name] = tok
 
     if not all(tokens.values()):
-        print("Some logins failed, cannot continue.")
+        print("\nSome logins failed (token missing). Stopping early.")
         sys.exit(1)
 
-    # TC3: Call without token should fail
+    # TC3
     print_step("TC3: Unauthorised request (no token)")
     r = get(f"{base}/api/posts", params={"topic": "Tech"})
-    print("Browse Tech without token:", r.status_code, "(expected 401)")
+    show_expected_actual(
+        "Browse Tech without token",
+        "401 Unauthorized",
+        f"{r.status_code}",
+    )
 
-    # TC4/5/6: Create three Tech posts
+    # TC4/5/6
     print_step("TC4/TC5/TC6: Create Tech posts (Olga, Nick, Mary)")
     olga_post = create_post(base, tokens["Olga"], "Olga Tech Post", ["Tech"], "Olga: Hello Tech!", 5)
     nick_post = create_post(base, tokens["Nick"], "Nick Tech Post", ["Tech"], "Nick: Tech thoughts.", 5)
     mary_post = create_post(base, tokens["Mary"], "Mary Tech Post", ["Tech"], "Mary: AI topic.", 5)
 
     if not (olga_post and nick_post and mary_post):
-        print("Post creation failed, cannot continue.")
+        print("\nOne or more posts failed to create. Stopping early.")
         sys.exit(1)
 
-    # TC7: Browse Tech (expect at least those 3)
+    # TC7
     print_step("TC7: Browse Tech posts (Nick + Olga)")
     tech_posts_nick = browse_topic(base, tokens["Nick"], "Tech")
     tech_posts_olga = browse_topic(base, tokens["Olga"], "Tech")
+    print("  (Just a note) Expecting to see at least 3 posts total.")
 
-    print("Tech posts found (Nick):", len(tech_posts_nick))
-    print("Tech posts found (Olga):", len(tech_posts_olga))
-
-    # TC8: Nick + Olga like Mary's post
+    # TC8
     print_step("TC8: Nick and Olga like Mary's Tech post")
-    like(base, tokens["Nick"], mary_post)
-    like(base, tokens["Olga"], mary_post)
+    show_expected_actual("Nick likes Mary", "200 OK", like(base, tokens["Nick"], mary_post, who="Nick").status_code)
+    show_expected_actual("Olga likes Mary", "200 OK", like(base, tokens["Olga"], mary_post, who="Olga").status_code)
 
-    # TC9: Nestor likes Nick, dislikes Mary
+    # TC9
     print_step("TC9: Nestor likes Nick's post and dislikes Mary's post")
-    like(base, tokens["Nestor"], nick_post)
-    dislike(base, tokens["Nestor"], mary_post)
+    show_expected_actual("Nestor likes Nick", "200 OK", like(base, tokens["Nestor"], nick_post, who="Nestor").status_code)
+    show_expected_actual("Nestor dislikes Mary", "200 OK", dislike(base, tokens["Nestor"], mary_post, who="Nestor").status_code)
 
-    # TC10: Nick browses Tech, check counts (light check)
+    # TC10
     print_step("TC10: Nick browses Tech posts (check counts)")
     tech_posts = browse_topic(base, tokens["Nick"], "Tech")
     p_mary = find_post(tech_posts, mary_post)
     p_nick = find_post(tech_posts, nick_post)
 
+    print("\nCounts (expected vs actual):")
     if p_mary:
-        print("Mary counts:", "likes=", p_mary.get("likesCount"), "dislikes=", p_mary.get("dislikesCount"))
+        show_expected_actual("Mary likes", "2", str(p_mary.get("likesCount")))
+        show_expected_actual("Mary dislikes", "1", str(p_mary.get("dislikesCount")))
+        show_expected_actual("Mary comments", "0", str(len(p_mary.get("comments", []))))
+    else:
+        print("  Couldn't find Mary's post in the list (unexpected).")
+
     if p_nick:
-        print("Nick counts:", "likes=", p_nick.get("likesCount"), "dislikes=", p_nick.get("dislikesCount"))
+        show_expected_actual("Nick likes", "1", str(p_nick.get("likesCount")))
+    else:
+        print("  Couldn't find Nick's post in the list (unexpected).")
 
-    # TC11: Mary likes her own post (should fail)
+    # TC11
     print_step("TC11: Mary tries to like her own post (should fail)")
-    r = like(base, tokens["Mary"], mary_post)
-    print("Mary self-like response:", r.status_code, "(expected 403/409)")
+    r = like(base, tokens["Mary"], mary_post, who="Mary (self-like)")
+    show_expected_actual(
+        "Mary self-like",
+        "403 Forbidden (or 409 Conflict depending on your API)",
+        f"{r.status_code}",
+    )
+    if r.status_code not in (403, 409):
+        data = try_json(r)
+        if data:
+            print("  Response:", data)
 
-    # TC12: Comments on Mary's post
+    # TC12
     print_step("TC12: Nick and Olga comment on Mary's post (2 each)")
-    comment(base, tokens["Nick"], mary_post, "Nick comment #1")
-    comment(base, tokens["Olga"], mary_post, "Olga comment #1")
-    comment(base, tokens["Nick"], mary_post, "Nick comment #2")
-    comment(base, tokens["Olga"], mary_post, "Olga comment #2")
+    comment(base, tokens["Nick"], mary_post, "Nick comment #1", who="Nick")
+    comment(base, tokens["Olga"], mary_post, "Olga comment #1", who="Olga")
+    comment(base, tokens["Nick"], mary_post, "Nick comment #2", who="Nick")
+    comment(base, tokens["Olga"], mary_post, "Olga comment #2", who="Olga")
 
-    # TC13: Browse Tech again and print comment count
+    # TC13
     print_step("TC13: Nick browses Tech (see comments)")
     tech_posts = browse_topic(base, tokens["Nick"], "Tech")
     p_mary = find_post(tech_posts, mary_post)
     if p_mary:
-        print("Mary comments:", len(p_mary.get("comments", [])))
+        show_expected_actual("Mary comments count", "4", str(len(p_mary.get("comments", []))))
+    else:
+        print("  Couldn't find Mary's post to check comments.")
 
-    # TC14: Nestor creates Health post (short expiry)
+    # TC14
     print_step("TC14: Nestor creates Health post (1 minute expiry)")
     nestor_health = create_post(
         base,
@@ -226,44 +308,49 @@ def main():
     )
 
     if not nestor_health:
-        print("Health post creation failed.")
+        print("\nHealth post creation failed. Stopping early.")
         sys.exit(1)
 
-    # TC15: Mary browses Health
-    print_step("TC15: Mary browses Health posts")
+    # TC15
+    print_step("TC15: Mary browses Health posts (should see Nestor's post)")
     health_posts = browse_topic(base, tokens["Mary"], "Health")
-    print("Health posts found:", len(health_posts))
+    print("  (Just a note) Expecting at least 1 Health post.")
 
-    # TC16: Mary comments on Nestor's Health post
+    # TC16
     print_step("TC16: Mary comments on Nestor's Health post")
-    comment(base, tokens["Mary"], nestor_health, "Mary: commenting on Health post")
+    comment(base, tokens["Mary"], nestor_health, "Mary: commenting on Health post", who="Mary")
 
-    # TC17: Wait for expiry then dislike should fail
+    # TC17
     print_step("TC17: After expiry, Mary dislikes Nestor's Health post (should fail)")
     print("Waiting ~75 seconds for expiry...")
     time.sleep(75)
-    r = dislike(base, tokens["Mary"], nestor_health)
-    print("Dislike after expiry:", r.status_code, "(expected 403)")
+    r = dislike(base, tokens["Mary"], nestor_health, who="Mary (after expiry)")
+    show_expected_actual("Dislike after expiry", "403 Forbidden", f"{r.status_code}")
 
-    # TC18: Nestor browses Health and prints comment count
+    # TC18
     print_step("TC18: Nestor browses Health posts (should see 1 comment)")
     health_posts = browse_topic(base, tokens["Nestor"], "Health")
     p_health = find_post(health_posts, nestor_health)
     if p_health:
-        print("Nestor health comments:", len(p_health.get("comments", [])))
+        show_expected_actual("Health post comments", "1", str(len(p_health.get("comments", []))))
+    else:
+        print("  Couldn't find Nestor's Health post.")
 
-    # TC19: Nick browses expired Sport posts (should be empty)
+    # TC19
     print_step("TC19: Nick checks expired posts in Sport (should be empty)")
     expired_sport = expired_by_topic(base, tokens["Nick"], "Sport")
     if isinstance(expired_sport, list):
-        print("Expired Sport count:", len(expired_sport))
+        show_expected_actual("Expired Sport list length", "0", str(len(expired_sport)))
+    else:
+        print("  Didn't get a list back for expired Sport posts.")
 
-    # TC20: Most active Tech should be Mary's post
+    # TC20
     print_step("TC20: Nestor queries most active Tech post (should be Mary's)")
     active = most_active(base, tokens["Nestor"], "Tech")
     if active:
-        print("Most active Tech post id:", active.get("_id"))
-        print("Expected Mary post id:", mary_post)
+        show_expected_actual("Most active Tech post ID", mary_post, str(active.get("_id")))
+    else:
+        print("  Didn't get a response for most active Tech post.")
 
     print("\nDone.")
 
