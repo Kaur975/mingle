@@ -93,15 +93,20 @@ router.post("/", authRequired, async (req, res, next) => {
  */
 router.get("/", authRequired, async (req, res, next) => {
   try {
+    // Choose whether to filter returned posts by a specific topic, or whether they are Live/Expired
     const topic = req.query.topic ? String(req.query.topic) : null;
     const status = req.query.status ? String(req.query.status) : null;
 
-    
+    // Return only a certain number of posts - by default the limit is 50 which is the maximum.
+    // If the number returned is invalid, default to a limit of 20.
     const limit = Math.min(toInt(req.query.limit, 20), 50);
+
+    // Skip the first few pages of results - useful for paginating results
     const skip = Math.max(toInt(req.query.skip, 0), 0);
 
     const filter = {};
 
+    // Validation for the filters
     if (topic) {
       if (!TOPICS.includes(topic)) {
         return res.status(400).json({ error: `topic must be one of: ${TOPICS.join(", ")}` });
@@ -116,6 +121,7 @@ router.get("/", authRequired, async (req, res, next) => {
       filter.status = status;
     }
 
+    // Send the result
     const posts = await Post.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
