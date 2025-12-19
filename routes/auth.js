@@ -24,14 +24,14 @@ router.post("/register", async (req, res, next) => {
     const password = String(req.body.password || "");
 
     // Validation 1 - check user inputs
-    if (name.length < 2) {
-      return res.status(400).json({ error: "Name must be at least 2 characters" });
+    if (name.length < 6) {
+      return res.status(400).json({ error: "Name must be at least 6 characters" });
     }
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       return res.status(400).json({ error: "Invalid email format" });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    if (password.length < 8 || password.length > 30) {
+      return res.status(400).json({ error: "Password must be between 8 and 30 characters" });
     }
 
     // Validation 2 - check if the user already exists

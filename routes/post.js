@@ -43,8 +43,8 @@ router.post("/", authRequired, async (req, res, next) => {
     const expiresInMinutes = req.body.expiresInMinutes;
     const expiresAtRaw = req.body.expiresAt;
 
-    if (title.length < 2 || title.length > 120) {
-      return res.status(400).json({ error: "Title must be 2–120 characters" });
+    if (title.length < 6 || title.length > 120) {
+      return res.status(400).json({ error: "Title must be 6–120 characters" });
     }
     if (body.length < 1 || body.length > 2000) {
       return res.status(400).json({ error: "Body must be 1–2000 characters" });
@@ -77,7 +77,7 @@ router.post("/", authRequired, async (req, res, next) => {
         userId: req.user.userId,
         name: req.user.name,
       },
-      // status is set by pre-save hook too; okay either way
+      // status is set by pre-save hook too, but also calculated within the route just to be safe
       status: computeStatus(expiresAt),
     });
 
@@ -96,6 +96,7 @@ router.get("/", authRequired, async (req, res, next) => {
     const topic = req.query.topic ? String(req.query.topic) : null;
     const status = req.query.status ? String(req.query.status) : null;
 
+    
     const limit = Math.min(toInt(req.query.limit, 20), 50);
     const skip = Math.max(toInt(req.query.skip, 0), 0);
 
